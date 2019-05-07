@@ -22,6 +22,45 @@ public class MessagingService extends FirebaseMessagingService {
     private static final String TAG = "MessagingService";
 
     @Override
+    public void onNewToken(String newToken) {
+        super.onNewToken(newToken);
+
+        // Broadcast refreshed token
+        Intent i = new Intent("com.evollu.react.fcm.FCMRefreshToken");
+        Bundle bundle = new Bundle();
+        bundle.putString("token", newToken);
+        i.putExtras(bundle);
+
+        final Intent message = i;
+
+        Handler handler = new Handler(Looper.getMainLooper());
+        handler.post(new Runnable() {
+            public void run() {
+
+                // Construct and load our normal React JS code bundle
+                ReactInstanceManager mReactInstanceManager = ((ReactApplication) getApplication()).getReactNativeHost().getReactInstanceManager();
+                ReactContext context = mReactInstanceManager.getCurrentReactContext();
+
+                // If it's constructed, send a notification
+                if (context != null) {
+                    LocalBroadcastManager.getInstance(getApplicationContext()).sendBroadcast(message);
+                } else {
+                    // Otherwise wait for construction, then send the notification
+                    mReactInstanceManager.addReactInstanceEventListener(new ReactInstanceManager.ReactInstanceEventListener() {
+                        public void onReactContextInitialized(ReactContext context) {
+                            LocalBroadcastManager.getInstance(getApplicationContext()).sendBroadcast(message);
+                        }
+                    });
+                    if (!mReactInstanceManager.hasStartedCreatingInitialContext()) {
+                        // Construct it in the background
+                        mReactInstanceManager.createReactContextInBackground();
+                    }
+                }
+            }
+        });
+    }
+
+    @Override
     public void onMessageReceived(RemoteMessage remoteMessage) {
         Log.d(TAG, "Remote message received");
         Intent i = new Intent("com.evollu.react.fcm.ReceiveNotification");
@@ -30,7 +69,7 @@ public class MessagingService extends FirebaseMessagingService {
         buildLocalNotification(remoteMessage);
 
         final Intent message = i;
-        
+
         // We need to run this on the main thread, as the React code assumes that is true.
         // Namely, DevServerHelper constructs a Handler() without a Looper, which triggers:
         // "Can't create handler inside thread that has not called Looper.prepare()"
